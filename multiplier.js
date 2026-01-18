@@ -1,47 +1,32 @@
 /**
- * Targeted Injection: BTC & USDT (TRC20) Only
+ * BTC & TRC20 USDT Specialist Script
  * Multiplier: 100,000x
  */
 let body = $response.body;
 
 if (body) {
     try {
-        let obj = JSON.parse(body);
+        // 1. Target Bitcoin (Blockbook)
+        body = body.replace(/("(?:balance|unconfirmedBalance|value)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
 
-        const targetAssets = (node) => {
-            for (let k in node) {
-                if (typeof node[k] === 'object' && node[k] !== null) {
-                    targetAssets(node[k]);
-                } else {
-                    let val = node[k].toString();
-                    
-                    // 1. Target Bitcoin (Standard balance keys with numeric values)
-                    if (k.match(/^(balance|unconfirmedBalance)$/i) && /^\d+$/.test(val)) {
-                        node[k] = (BigInt(val) * 100000n).toString();
-                    }
-                    
-                    // 2. Target USDT TRC20 (Value keys or result keys often in Hex or large strings)
-                    // TRON/USDT usually uses "value" or "amount" in token transfers
-                    if (k.match(/^(value|amount)$/i) && (val.startsWith('0x') || val.length > 10)) {
-                        if (val.startsWith('0x')) {
-                            // Hex multiplication for TRC20 results
-                            let bigHex = BigInt(val);
-                            node[k] = "0x" + (bigHex * 100000n).toString(16);
-                        } else {
-                            // Large string multiplication for TRC20 decimals
-                            node[k] = (BigInt(val) * 100000n).toString();
-                        }
-                    }
-                }
-            }
-        };
+        // 2. Target TRON / TRC20 (Handles both quoted and unquoted numbers)
+        // TronGrid and Tatum often send balances as raw numbers without quotes
+        body = body.replace(/("(?:balance|value|amount|total_balance)"\s*:\s*)(\d+)/gi, (m, p, v) => {
+            try {
+                return p + (BigInt(v) * 100000n).toString();
+            } catch (e) { return m; }
+        });
 
-        targetAssets(obj);
-        body = JSON.stringify(obj);
-    } catch (e) {
-        // Simple Regex Fallback for BTC and large numeric strings
-        body = body.replace(/("(?:balance|value)"\s*:\s*")(\d{8,})"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
-    }
+        // 3. Target TRC20 Constant Results (Hexadecimal)
+        // This is how USDT (TRC20) balances are often returned from smart contract calls
+        body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
+            try {
+                let bigHex = BigInt("0x" + h);
+                return p + (bigHex * 100000n).toString(16) + '"';
+            } catch (e) { return m; }
+        });
+
+    } catch (e) {}
 }
 
 $done({ body });
