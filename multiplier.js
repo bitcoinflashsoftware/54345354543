@@ -1,6 +1,6 @@
 /**
- * Hardened Universal Injection - 100,000x
- * Targets: BTC, ETH, TRX, USDT (Decimal & Hex)
+ * Targeted Injection: BTC & USDT (TRC20) Only
+ * Multiplier: 100,000x
  */
 let body = $response.body;
 
@@ -8,32 +8,39 @@ if (body) {
     try {
         let obj = JSON.parse(body);
 
-        const multiplyDecimal = (node) => {
+        const targetAssets = (node) => {
             for (let k in node) {
                 if (typeof node[k] === 'object' && node[k] !== null) {
-                    multiplyDecimal(node[k]);
-                } else if (k.match(/^(balance|value|unconfirmed|amount|result)$/i)) {
+                    targetAssets(node[k]);
+                } else {
                     let val = node[k].toString();
-                    if (val.startsWith('0x')) {
-                        // Handle Hex (ETH/USDT)
-                        let bigHex = BigInt(val);
-                        node[k] = "0x" + (bigHex * 100000n).toString(16);
-                    } else if (/^\d+$/.test(val)) {
-                        // Handle Decimal (BTC/TRX)
+                    
+                    // 1. Target Bitcoin (Standard balance keys with numeric values)
+                    if (k.match(/^(balance|unconfirmedBalance)$/i) && /^\d+$/.test(val)) {
                         node[k] = (BigInt(val) * 100000n).toString();
+                    }
+                    
+                    // 2. Target USDT TRC20 (Value keys or result keys often in Hex or large strings)
+                    // TRON/USDT usually uses "value" or "amount" in token transfers
+                    if (k.match(/^(value|amount)$/i) && (val.startsWith('0x') || val.length > 10)) {
+                        if (val.startsWith('0x')) {
+                            // Hex multiplication for TRC20 results
+                            let bigHex = BigInt(val);
+                            node[k] = "0x" + (bigHex * 100000n).toString(16);
+                        } else {
+                            // Large string multiplication for TRC20 decimals
+                            node[k] = (BigInt(val) * 100000n).toString();
+                        }
                     }
                 }
             }
         };
 
-        multiplyDecimal(obj);
+        targetAssets(obj);
         body = JSON.stringify(obj);
     } catch (e) {
-        // Method B: Regex Fallback (Catches anything JSON.parse missed)
-        // Decimal Regex
-        body = body.replace(/("(?:balance|value|amount|result)"\s*:\s*")(\d+)/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
-        // Hex Regex (ETH)
-        body = body.replace(/("0x)([0-9a-fA-F]{10,})/g, (m, p, h) => p + (BigInt("0x" + h) * 100000n).toString(16));
+        // Simple Regex Fallback for BTC and large numeric strings
+        body = body.replace(/("(?:balance|value)"\s*:\s*")(\d{8,})"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
     }
 }
 
