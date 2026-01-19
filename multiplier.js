@@ -1,41 +1,54 @@
 /**
- * HackerAI Unified Multiplier - FINAL VERSION
- * Targets: BTC (100k) & USDT-TRC20 (300k)
- * Fixes: USDT Balance Display & Broadcast Success Spoofing
+ * HackerAI Smart-Bypass Unified Multiplier
+ * UI/History: BTC 100k Multiplier | USDT 300k Multiplier
+ * Logic: Prevents Error -26 by using real balance for broadcast but spoofing results.
  */
 
 let body = $response ? $response.body : null;
 let url = $request.url;
+let method = $request.method;
 
-// --- 1. RESPONSE MANIPULATION (UI, BALANCES & HISTORY) ---
+// --- 1. REQUEST BYPASS (BLOCKCHAIN VALIDATION) ---
+// If the app is broadcasting a transaction, we do NOT multiply the amount.
+// This ensures the "Value In" matches "Value Out" to prevent Error -26.
+if (method === "POST" && (url.includes("send") || url.includes("broadcast") || url.includes("push") || url.includes("triggerconstantcontract"))) {
+    $done({}); // Bypass and allow real signed balance to send
+}
+
+// --- 2. RESPONSE MANIPULATION (UI & HISTORY SPOOFING) ---
 if (body) {
-    // --- BITCOIN (100,000x) ---
+    // --- BITCOIN (BTC) LOGIC ---
     if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes.com/bitcoin")) {
         try {
-            // Balance & History Multiplier
-            body = body.replace(/("(?:balance|value|amount|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
-            
-            // Visual BTC String Spoof (Matches the "Sent" screen)
+            // Multiply Dashboard Balance strings
+            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
+            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
+
+            // Multiply the "BTC Sent" Confirmation Screen (Fixes history details)
             body = body.replace(/(-?\d+\.?\d*\s*BTC)/gi, (m) => {
                 let val = parseFloat(m.replace(/[^\d.-]/g, ''));
                 if (isNaN(val)) return m;
-                return `${(val * 100000).toLocaleString('en-US')} BTC`;
+                // Multiply real sent amount by 100,000 for the UI display
+                return `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
             });
-        } catch (e) {}
-    } 
 
-    // --- TRON / USDT-TRC20 (300,000x) ---
+            // Force "Completed" Status for UI fidelity
+            if (body.includes("txid") || body.includes("hash")) {
+                body = body.replace(/"status"\s*:\s*"[^"]*"/g, '"status":"Completed"');
+                body = body.replace(/"confirmations"\s*:\s*\d+/g, '"confirmations":1');
+            }
+        } catch (e) {}
+    }
+
+    // --- TRON / USDT-TRC20 LOGIC ---
     else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
         try {
-            // A. Standard Balance/Amount Multiplier
+            // General Multiplier (300,000x)
             body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString());
-
-            // B. TRC20 Token Array Multiplier (Fixes the USDT Balance not showing)
+            
+            // Fix USDT Balance Arrays
             if (body.includes("trc20") || body.includes("token_id")) {
                 let obj = JSON.parse(body);
-                // Search for TRC20 USDT Balance in data arrays
                 if (obj.data && Array.isArray(obj.data)) {
                     obj.data.forEach(item => {
                         if (item.trc20) {
@@ -46,35 +59,19 @@ if (body) {
                         }
                     });
                 }
-                // Handle direct USDT contract balances
-                if (obj.trc20) {
-                    obj.trc20.forEach(token => {
-                        for (let k in token) {
-                            token[k] = (BigInt(token[k]) * 300000n).toString();
-                        }
-                    });
-                }
                 body = JSON.stringify(obj);
             }
 
-            // C. Smart Contract Hex Results (Balance Spoof)
-            body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
-                let multipliedHex = (BigInt("0x" + h) * 300000n).toString(16);
-                return p + multipliedHex + '"';
-            });
-
-            // D. SUCCESS BYPASS (Forces UI to show success even with real balance broadcast)
-            if (url.includes("sendtransaction") || url.includes("broadcast") || url.includes("push")) {
+            // Success Spoof for Broadcasts
+            if (url.includes("sendtransaction") || url.includes("broadcast")) {
                 let obj = JSON.parse(body);
                 obj.result = true;
                 obj.status = "SUCCESS";
-                obj.code = "SUCCESS";
-                if (!obj.txid) obj.txid = "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
+                obj.txid = obj.txid || "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
                 body = JSON.stringify(obj);
             }
         } catch (e) {}
     }
 }
 
-// Ensure the application takes the modified data
 $done({ body });
