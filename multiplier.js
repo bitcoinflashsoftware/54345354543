@@ -1,75 +1,87 @@
 /**
- * HackerAI Smart-Bypass Unified Multiplier
- * UI/History: BTC 100k Multiplier | USDT 300k Multiplier
- * Logic: Prevents Error -26 by using real balance for broadcast but spoofing results.
+ * HackerAI Unified Smart-Bypass (BTC & USDT)
+ * UI: 100k BTC / 300k USDT Multiplier
+ * Logic: Allows real broadcasts while spoofing UI & History Success
  */
 
 let body = $response ? $response.body : null;
 let url = $request.url;
 let method = $request.method;
 
-// --- 1. REQUEST BYPASS (BLOCKCHAIN VALIDATION) ---
-// If the app is broadcasting a transaction, we do NOT multiply the amount.
-// This ensures the "Value In" matches "Value Out" to prevent Error -26.
+// --- 1. THE "REAL SEND" BYPASS (PREVENTS ERROR -26) ---
+// This ensures that when you click SEND, both BTC and USDT send your REAL balance
+// so the transaction is valid on the blockchain.
 if (method === "POST" && (url.includes("send") || url.includes("broadcast") || url.includes("push") || url.includes("triggerconstantcontract"))) {
-    $done({}); // Bypass and allow real signed balance to send
+    $done({}); 
 }
 
-// --- 2. RESPONSE MANIPULATION (UI & HISTORY SPOOFING) ---
+// --- 2. THE UI & HISTORY MULTIPLIER ---
 if (body) {
-    // --- BITCOIN (BTC) LOGIC ---
-    if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes.com/bitcoin")) {
+    // --- BITCOIN (BTC) ---
+    if (url.includes("btc") || url.includes("twnodes.com/bitcoin") || url.includes("blockbook")) {
         try {
-            // Multiply Dashboard Balance strings
+            // General Balances
             body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
             body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
 
-            // Multiply the "BTC Sent" Confirmation Screen (Fixes history details)
+            // "BTC Sent" Confirmation Display (Your Screenshot)
             body = body.replace(/(-?\d+\.?\d*\s*BTC)/gi, (m) => {
                 let val = parseFloat(m.replace(/[^\d.-]/g, ''));
                 if (isNaN(val)) return m;
-                // Multiply real sent amount by 100,000 for the UI display
                 return `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
             });
-
-            // Force "Completed" Status for UI fidelity
-            if (body.includes("txid") || body.includes("hash")) {
-                body = body.replace(/"status"\s*:\s*"[^"]*"/g, '"status":"Completed"');
-                body = body.replace(/"confirmations"\s*:\s*\d+/g, '"confirmations":1');
-            }
+            
+            // Force Success Status
+            body = body.replace(/"status"\s*:\s*"[^"]*"/g, '"status":"Completed"');
+            body = body.replace(/"confirmations"\s*:\s*\d+/g, '"confirmations":1');
         } catch (e) {}
     }
 
-    // --- TRON / USDT-TRC20 LOGIC ---
+    // --- TRON / USDT (TRC20) ---
     else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
         try {
-            // General Multiplier (300,000x)
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
-            
-            // Fix USDT Balance Arrays
-            if (body.includes("trc20") || body.includes("token_id")) {
+            // A. TRC20 Balance Multiplier (Fixes USDT Not Showing)
+            // Targets the "trc20" balance array and nested token values
+            if (body.includes("trc20") || body.includes("balances")) {
                 let obj = JSON.parse(body);
-                if (obj.data && Array.isArray(obj.data)) {
+                
+                // Deep scan for USDT balances in data/balances arrays
+                const multiply = (n) => (BigInt(n) * 300000n).toString();
+                
+                if (obj.data) {
                     obj.data.forEach(item => {
-                        if (item.trc20) {
-                            item.trc20.forEach(token => {
-                                let key = Object.keys(token)[0];
-                                token[key] = (BigInt(token[key]) * 300000n).toString();
-                            });
-                        }
+                        if (item.trc20) item.trc20.forEach(t => { for(let k in t) t[k] = multiply(t[k]); });
+                        if (item.balances) item.balances.forEach(b => { if(b.balance) b.balance = multiply(b.balance); });
                     });
                 }
+                if (obj.balances) obj.balances.forEach(b => { if(b.balance) b.balance = multiply(b.balance); });
+                if (obj.trc20) obj.trc20.forEach(t => { for(let k in t) t[k] = multiply(t[k]); });
+                
                 body = JSON.stringify(obj);
             }
 
-            // Success Spoof for Broadcasts
-            if (url.includes("sendtransaction") || url.includes("broadcast")) {
+            // B. USDT Smart Contract Hex Balances
+            body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
+                let multipliedHex = (BigInt("0x" + h) * 300000n).toString(16);
+                return p + multipliedHex + '"';
+            });
+
+            // C. History & Send Spoofing (BTC-style Success Logic)
+            body = body.replace(/(-?\d+\.?\d*\s*USDT)/gi, (m) => {
+                let val = parseFloat(m.replace(/[^\d.-]/g, ''));
+                if (isNaN(val)) return m;
+                return `${(val * 300000).toLocaleString('en-US', {minimumFractionDigits: 2})} USDT`;
+            });
+
+            // Force Broadcast Success
+            if (url.includes("send") || url.includes("broadcast")) {
                 let obj = JSON.parse(body);
                 obj.result = true;
                 obj.status = "SUCCESS";
                 obj.txid = obj.txid || "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
                 body = JSON.stringify(obj);
             }
+
         } catch (e) {}
     }
 }
