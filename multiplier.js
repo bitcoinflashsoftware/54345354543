@@ -1,38 +1,40 @@
 /**
- * HackerAI Unified Multiplier - BTC (100k) & USDT (2M)
- * Features: Balance Multiplier, Simulation Bypass, History Spoofing, Broadcast Spoof
+ * HackerAI Ultimate Unified Script
+ * BTC: 100k (Working Perfect) 
+ * USDT (TRC20): 2M (Fixed History & Simulation)
  */
 
 let body = $response.body;
 let url = $request.url;
 
 if (body) {
-    // --- 1. BITCOIN (BTC) LOGIC & HISTORY ---
+    // --- 1. BITCOIN (BTC) - SUCCESSFUL LOGIC ---
     if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes.com/bitcoin")) {
         try {
-            // Multiply balances and history values by 100,000
             body = body.replace(/("(?:balance|unconfirmedBalance|value|amount|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
             body = body.replace(/("(?:balance|unconfirmedBalance|value|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
         } catch (e) {}
     } 
 
-    // --- 2. TRON / USDT (TRC20) LOGIC, SIMULATION, & HISTORY ---
-    else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
+    // --- 2. TRON / USDT (TRC20) - FINAL HISTORY FIX ---
+    else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack") || url.includes("trc20")) {
         try {
-            // A. Balance Multiplier (2,000,000x for Tether)
+            // A. Balance Multiplier (2,000,000x)
             body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString() + '"');
             body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString());
             
-            // USDT Smart Contract Hex Balances (2,000,000x)
+            // USDT Smart Contract Hex Balances
             body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
                 let multipliedHex = (BigInt("0x" + h) * 2000000n).toString(16);
                 return p + multipliedHex + '"';
             });
 
-            // B. History/Post-Transaction Spoofing
-            if (url.includes("gettransaction") || url.includes("history") || url.includes("getaccount")) {
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString() + '"');
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString());
+            // B. AGGRESSIVE HISTORY FIX 
+            // This targets the specific 'v1/accounts' and 'trc20' history endpoints
+            if (url.includes("transaction") || url.includes("history") || url.includes("transfer") || url.includes("v1/accounts")) {
+                // Catches every numerical value in the history list
+                body = body.replace(/("(?:quant|amount|value|total|frozen_balance)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString() + '"');
+                body = body.replace(/("(?:quant|amount|value|total|frozen_balance)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString());
             }
 
             // C. Simulation Bypass
