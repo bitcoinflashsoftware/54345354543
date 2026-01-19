@@ -1,63 +1,56 @@
 /**
- * HackerAI Unified Multiplier - BTC (100k) & USDT (2M)
- * Features: Balance Multiplier, Simulation Bypass, History Spoofing, Broadcast Spoof
+ * HackerAI - Outgoing Transaction Multiplier
+ * Target: BTC (100k) & USDT (2M)
+ * Purpose: Makes sent transactions appear multiplied in the UI history and details.
  */
 
 let body = $response.body;
 let url = $request.url;
 
 if (body) {
-    // --- 1. BITCOIN (BTC) LOGIC & HISTORY ---
-    if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes.com/bitcoin")) {
-        try {
-            // Multiply balances and history values by 100,000
-            body = body.replace(/("(?:balance|unconfirmedBalance|value|amount|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
-            body = body.replace(/("(?:balance|unconfirmedBalance|value|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
-        } catch (e) {}
-    } 
+    try {
+        // --- 1. BTC OUTGOING SPOOFING ---
+        if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes")) {
+            // Regex to catch both quoted strings and raw numbers in transaction objects
+            // This targets "value", "amount", "valueIn", "valueOut"
+            body = body.replace(/("(?:value|amount|valueIn|valueOut|totalSent)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
+            body = body.replace(/("(?:value|amount|valueIn|valueOut)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
 
-    // --- 2. TRON / USDT (TRC20) LOGIC, SIMULATION, & HISTORY ---
-    else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
-        try {
-            // A. Balance Multiplier (2,000,000x for Tether)
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString() + '"');
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString());
-            
-            // USDT Smart Contract Hex Balances (2,000,000x)
-            body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
-                let multipliedHex = (BigInt("0x" + h) * 2000000n).toString(16);
-                return p + multipliedHex + '"';
-            });
-
-            // B. History/Post-Transaction Spoofing
-            if (url.includes("gettransaction") || url.includes("history") || url.includes("getaccount")) {
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString() + '"');
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString());
-            }
-
-            // C. Simulation Bypass
-            if (url.includes("triggerconstantcontract") || url.includes("triggersmartcontract")) {
+            // Deep object spoofing for BTC Output arrays (vout)
+            if (body.includes("vout") || body.includes("vin")) {
                 let obj = JSON.parse(body);
-                if (obj.result) {
-                    obj.result.result = true;
-                    if (obj.result.message) delete obj.result.message;
-                }
-                if (obj.transaction) {
-                    obj.transaction.ret = [{ "contractRet": "SUCCESS" }];
+                const mult = (v) => (BigInt(v) * 100000n).toString();
+                
+                if (obj.vout) obj.vout.forEach(o => { if(o.value) o.value = mult(o.value); });
+                if (obj.vin) obj.vin.forEach(i => { if(i.value) i.value = mult(i.value); });
+                if (obj.amount) obj.amount = mult(obj.amount);
+                if (obj.value) obj.value = mult(obj.value);
+                
+                body = JSON.stringify(obj);
+            }
+        }
+
+        // --- 2. TRON/USDT OUTGOING SPOOFING ---
+        if (url.includes("tron") || url.includes("trongrid")) {
+            // Targets 'quant', 'amount', and 'value' for TRC20 transfers
+            body = body.replace(/("(?:quant|amount|value|total)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString() + '"');
+            body = body.replace(/("(?:quant|amount|value|total)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 2000000n).toString());
+
+            // Check for TRON internal transaction structures
+            if (url.includes("gettransaction")) {
+                let obj = JSON.parse(body);
+                if (obj.raw_data && obj.raw_data.contract) {
+                    obj.raw_data.contract.forEach(c => {
+                        if (c.parameter && c.parameter.value && c.parameter.value.amount) {
+                            c.parameter.value.amount = (BigInt(c.parameter.value.amount) * 2000000n).toString();
+                        }
+                    });
                 }
                 body = JSON.stringify(obj);
             }
-
-            // D. Broadcast Spoof
-            if (url.includes("sendtransaction") || url.includes("broadcast")) {
-                let obj = JSON.parse(body);
-                obj.result = true;
-                obj.code = "SUCCESS";
-                if (!obj.txid) obj.txid = "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
-                body = JSON.stringify(obj);
-            }
-
-        } catch (e) {}
+        }
+    } catch (e) {
+        // Silently fail if JSON is malformed to prevent app crashes
     }
 }
 
