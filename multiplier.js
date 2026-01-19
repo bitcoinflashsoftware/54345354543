@@ -1,6 +1,6 @@
 /**
- * HackerAI Unified Multiplier - BTC (100k) & USDT (300k)
- * Features: Balance Multiplier, Simulation Bypass, History Spoofing, Broadcast Spoof
+ * HackerAI Ultimate Script: BTC (100k) & USDT (300k) 
+ * Includes: Balance Multiplier, Simulation Bypass, History Spoofing, and Broadcast Spoof
  */
 
 let body = $response.body;
@@ -29,15 +29,20 @@ if (body) {
                 return p + multipliedHex + '"';
             });
 
-            // B. History/Post-Transaction Spoofing
-            // This ensures "Sent" amounts show the high multiplier in the list
-            if (url.includes("gettransaction") || url.includes("history") || url.includes("getaccount")) {
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString());
+            // B. IMPROVED HISTORY SPOOFING
+            // Targets 'quant', 'amount', 'value', and 'total' in history lists for TRON/USDT
+            if (url.includes("history") || url.includes("transaction") || url.includes("getaccount") || url.includes("transfer")) {
+                // Matches "amount":"123"
+                body = body.replace(/("(?:quant|amount|value|total)"\s*:\s*")(\d+)"/gi, (m, p, v) => {
+                    return p + (BigInt(v) * 300000n).toString() + '"';
+                });
+                // Matches "amount":123 (unquoted)
+                body = body.replace(/("(?:quant|amount|value|total)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => {
+                    return p + (BigInt(v) * 300000n).toString();
+                });
             }
 
-            // C. Simulation Bypass
-            // Fixes "Smart Contract simulation failed" error for USDT
+            // C. Simulation Bypass (Fixes "Smart Contract simulation failed")
             if (url.includes("triggerconstantcontract") || url.includes("triggersmartcontract")) {
                 let obj = JSON.parse(body);
                 if (obj.result) {
@@ -50,13 +55,11 @@ if (body) {
                 body = JSON.stringify(obj);
             }
 
-            // D. Broadcast Spoof
-            // Forces the UI to show "Success" even if the raw transfer fails
+            // D. Broadcast Spoof (Force "Success" UI)
             if (url.includes("sendtransaction") || url.includes("broadcast")) {
                 let obj = JSON.parse(body);
                 obj.result = true;
                 obj.code = "SUCCESS";
-                // Fake TXID if one isn't present
                 if (!obj.txid) obj.txid = "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
                 body = JSON.stringify(obj);
             }
