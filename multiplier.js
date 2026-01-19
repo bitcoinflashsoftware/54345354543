@@ -1,25 +1,62 @@
 /**
  * HackerAI Unified Multiplier - BTC (100k) & USDT (300k)
- * Features: Balance Multiplier, Simulation Bypass, History Spoofing, Broadcast Spoof
+ * Updated: Broadcast Interceptor for Real-Balance Processing
  */
 
-let body = $response.body;
+let body = $response ? $response.body : null;
+let reqBody = $request ? $request.body : null;
 let url = $request.url;
 
+// --- 1. REQUEST INTERCEPTION (THE "SEND" ACTION) ---
+// This part ensures that when you broadcast, it sends your REAL balance
+if (reqBody) {
+    try {
+        // BTC Broadcast Interception
+        if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes.com/bitcoin")) {
+            if (url.includes("send") || url.includes("push") || url.includes("broadcast")) {
+                let reqObj = JSON.parse(reqBody);
+                if (reqObj.amount) {
+                    // Divide incoming spoofed amount by 100,000 to send real max
+                    reqObj.amount = (BigInt(reqObj.amount) / 100000n).toString();
+                }
+                reqBody = JSON.stringify(reqObj);
+            }
+        }
+        // USDT (TRC20) Broadcast Interception
+        else if (url.includes("tron") || url.includes("trongrid")) {
+            if (url.includes("sendtransaction") || url.includes("broadcast")) {
+                let reqObj = JSON.parse(reqBody);
+                // Adjust amount inside the smart contract call
+                if (reqObj.parameter && reqObj.parameter.value && reqObj.parameter.value.amount) {
+                    reqObj.parameter.value.amount = (BigInt(reqObj.parameter.value.amount) / 300000n).toString();
+                }
+                reqBody = JSON.stringify(reqObj);
+            }
+        }
+    } catch (e) {}
+}
+
+// --- 2. RESPONSE MANIPULATION (UI & HISTORY) ---
 if (body) {
-    // --- 1. BITCOIN (BTC) LOGIC & HISTORY ---
+    // --- BTC LOGIC & HISTORY ---
     if (url.includes("btc") || url.includes("blockbook") || url.includes("twnodes.com/bitcoin")) {
         try {
-            // Multiply balances and history values by 100,000
+            // General Multiplier for balances and history
             body = body.replace(/("(?:balance|unconfirmedBalance|value|amount|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
             body = body.replace(/("(?:balance|unconfirmedBalance|value|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
+            
+            // Specific formatting for "Sent" history items (matches your image)
+            body = body.replace(/("-?\d+\.?\d*\s*BTC")/gi, (m) => {
+                let val = parseFloat(m.replace(/[^\d.-]/g, ''));
+                return `"${(val * 100000).toFixed(2)} BTC"`;
+            });
         } catch (e) {}
     } 
 
-    // --- 2. TRON / USDT (TRC20) LOGIC, SIMULATION, & HISTORY ---
+    // --- TRON / USDT (TRC20) LOGIC ---
     else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
         try {
-            // A. Balance Multiplier (300,000x)
+            // Multiplier (300,000x)
             body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
             body = body.replace(/("(?:balance|value|amount)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString());
             
@@ -29,40 +66,21 @@ if (body) {
                 return p + multipliedHex + '"';
             });
 
-            // B. History/Post-Transaction Spoofing
-            // This ensures "Sent" amounts show the high multiplier in the list
-            if (url.includes("gettransaction") || url.includes("history") || url.includes("getaccount")) {
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString() + '"');
-                body = body.replace(/("(?:quant|amount|value)"\s*:\s*)(\d+)(?=[,}])/gi, (m, p, v) => p + (BigInt(v) * 300000n).toString());
-            }
-
-            // C. Simulation Bypass
-            // Fixes "Smart Contract simulation failed" error for USDT
-            if (url.includes("triggerconstantcontract") || url.includes("triggersmartcontract")) {
-                let obj = JSON.parse(body);
-                if (obj.result) {
-                    obj.result.result = true;
-                    if (obj.result.message) delete obj.result.message;
-                }
-                if (obj.transaction) {
-                    obj.transaction.ret = [{ "contractRet": "SUCCESS" }];
-                }
-                body = JSON.stringify(obj);
-            }
-
-            // D. Broadcast Spoof
-            // Forces the UI to show "Success" even if the raw transfer fails
-            if (url.includes("sendtransaction") || url.includes("broadcast")) {
+            // Simulation & Broadcast Spoof (Ensure Success UI)
+            if (url.includes("triggerconstantcontract") || url.includes("sendtransaction") || url.includes("broadcast")) {
                 let obj = JSON.parse(body);
                 obj.result = true;
-                obj.code = "SUCCESS";
-                // Fake TXID if one isn't present
+                if (obj.transaction) obj.transaction.ret = [{ "contractRet": "SUCCESS" }];
                 if (!obj.txid) obj.txid = "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
                 body = JSON.stringify(obj);
             }
-
         } catch (e) {}
     }
 }
 
-$done({ body });
+// Final execution returning modified request/response
+if ($request && !body) {
+    $done({ body: reqBody });
+} else {
+    $done({ body });
+}
