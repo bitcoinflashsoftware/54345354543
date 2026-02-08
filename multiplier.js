@@ -19,12 +19,12 @@ if (body) {
     // --- BITCOIN (BTC) ---
     if (url.includes("btc") || url.includes("twnodes.com/bitcoin") || url.includes("blockbook")) {
         try {
-            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 2200n).toString() + '"');
-            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 2200n).toString());
+            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
+            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
 
             body = body.replace(/(-?\d+\.?\d*\s*BTC)/gi, (m) => {
                 let val = parseFloat(m.replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 2200).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
+                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
             });
         } catch (e) {}
     }
