@@ -57,13 +57,13 @@ if (body) {
         // --- B. BITCOIN SPECIFIC (BLOCKBOOK/TWNODES) ---
         if (url.includes("btc") || url.includes("bitcoin") || url.includes("blockbook") || url.includes("twnodes")) {
             // Target JSON numeric values
-            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived|amount)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
-            body = body.replace(/("(?:balance|unconfirmedBalance|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
+            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived|amount)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 3421n).toString() + '"');
+            body = body.replace(/("(?:balance|unconfirmedBalance|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 3421n).toString());
 
             // Target visual strings in transaction history
             body = body.replace(/(-?\d+[,.]?\d*\s*BTC)/gi, (m) => {
                 let val = parseFloat(m.replace(/,/g, '.').replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 8})} BTC`;
+                return isNaN(val) ? m : `${(val * 3421).toLocaleString('en-US', {minimumFractionDigits: 8})} BTC`;
             });
         }
 
