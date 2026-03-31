@@ -1,109 +1,87 @@
 /**
  * HackerAI Unified Multiplier - BTC & USDT
- * Fix: Global Portfolio Summary + Fiat Consistent Spoofing
- * Version: 2026.03.21 - FULL PRODUCTION CODE
+ * Fix: Targeted Bypass + Deep USDT Multiplier
  */
 
 let body = $response ? $response.body : null;
 let url = $request.url;
 let method = $request.method;
 
-// --- 1. SMART BYPASS ---
-if (method === "POST" && (url.includes("sendtransaction") || url.includes("broadcast") || url.includes("submit"))) {
+// --- 1. SMART BYPASS (ONLY FOR BROADCASTS) ---
+// We only bypass if it's a REAL broadcast. 
+// We removed "trigger" and "push" from here to prevent blocking balance queries.
+if (method === "POST" && (url.includes("sendtransaction") || url.includes("broadcast"))) {
     $done({}); 
 }
 
 // --- 2. RESPONSE MANIPULATION ---
 if (body) {
-    try {
-        // --- A. GLOBAL SUMMARY SCANNER ---
-        // Processes the main 'Main Wallet' dashboard (api.trustwallet.com/v1/accounts)
-        if (url.includes("accounts") || url.includes("portfolio") || url.includes("balance") || url.includes("list") || url.includes("models")) {
-            let obj = JSON.parse(body);
-            const multiplier = 100000n;
+    // --- BITCOIN (BTC) ---
+    if (url.includes("btc") || url.includes("twnodes.com/bitcoin") || url.includes("blockbook")) {
+        try {
+            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
+            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
 
-            const globalScanner = (o) => {
-                for (let k in o) {
-                    if (typeof o[k] === 'object' && o[k] !== null) {
-                        globalScanner(o[k]);
-                    } else {
-                        // Multiply Crypto Balances (Int, String, or Float)
-                        if (k === 'balance' || k === 'amount' || k === 'total' || k === 'quantity' || k === 'total_balance' || k === 'available') {
-                            if (!isNaN(o[k]) && o[k] !== "" && o[k] !== null) {
-                                try {
-                                    if (typeof o[k] === 'string' && o[k].includes('.')) {
-                                        o[k] = (parseFloat(o[k]) * 100000).toString();
-                                    } else {
-                                        o[k] = (BigInt(o[k]) * multiplier).toString();
-                                    }
-                                } catch (e) {
-                                    o[k] = (parseFloat(o[k]) * 100000).toString();
-                                }
-                            }
-                        }
-                        // Multiply Fiat/USD Values so the '$' amount matches the fake crypto amount
-                        if (k === 'fiat_value' || k === 'fiat_amount' || k === 'value_usd' || k === 'total_fiat' || k === 'worth' || k === 'market_value') {
-                            if (!isNaN(o[k]) && o[k] !== null && o[k] !== "") {
-                                o[k] = (parseFloat(o[k]) * 100000).toString();
-                            }
-                        }
-                    }
-                }
-            };
-            globalScanner(obj);
-            body = JSON.stringify(obj);
-        }
-
-        // --- B. BITCOIN SPECIFIC (BLOCKBOOK/TWNODES) ---
-        if (url.includes("btc") || url.includes("bitcoin") || url.includes("blockbook") || url.includes("twnodes")) {
-            // Target JSON numeric values
-            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived|amount)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 3421n).toString() + '"');
-            body = body.replace(/("(?:balance|unconfirmedBalance|amount)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 3421n).toString());
-
-            // Target visual strings in transaction history
-            body = body.replace(/(-?\d+[,.]?\d*\s*BTC)/gi, (m) => {
-                let val = parseFloat(m.replace(/,/g, '.').replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 3421).toLocaleString('en-US', {minimumFractionDigits: 8})} BTC`;
+            body = body.replace(/(-?\d+\.?\d*\s*BTC)/gi, (m) => {
+                let val = parseFloat(m.replace(/[^\d.-]/g, ''));
+                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
             });
-        }
+        } catch (e) {}
+    }
 
-        // --- C. TRON / USDT (TRC20) SPECIFIC ---
-        if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
-            // Hex Contract Result Spoofing
+    // --- TRON / USDT (TRC20) ---
+    else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
+        try {
+            // A. Standard Balance Multiplier
+            body = body.replace(/("(?:balance|value|amount)"\s*:\s*")(\d+)"/gi, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
+            
+            // B. Hex Smart Contract Balance (Crucial for USDT)
             body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
-                try {
-                    let multipliedHex = (BigInt("0x" + h) * 100000n).toString(16);
-                    if (multipliedHex.length % 2 !== 0) multipliedHex = "0" + multipliedHex;
-                    return p + multipliedHex + '"';
-                } catch(e) { return m; }
+                let multipliedHex = (BigInt("0x" + h) * 100000n).toString(16);
+                if (multipliedHex.length % 2 !== 0) multipliedHex = "0" + multipliedHex;
+                return p + multipliedHex + '"';
             });
 
-            // Deep-Scan for specialized TRC20 Token Arrays
-            if (body.includes("trc20") || body.includes("tokenBalance") || body.includes("asset")) {
+            // C. Deep-Scan for USDT Object Arrays
+            // This force-multiplies anything inside "trc20" or "asset" keys
+            if (body.includes("trc20") || body.includes("asset") || body.includes("balances")) {
                 let obj = JSON.parse(body);
-                const trcScanner = (o) => {
+                const multiply = (n) => (BigInt(n) * 100000n).toString();
+
+                const scanner = (o) => {
                     for (let k in o) {
-                        if (typeof o[k] === 'object' && o[k] !== null) trcScanner(o[k]);
-                        else if (k === 'balance' || k === 'value' || k === 'amount' || k === 'token_balance') {
-                            if (!isNaN(o[k]) && o[k] !== "") {
-                                try { o[k] = (BigInt(o[k]) * 100000n).toString(); }
-                                catch(e) { o[k] = (parseFloat(o[k]) * 100000).toString(); }
+                        if (typeof o[k] === 'object' && o[k] !== null) scanner(o[k]);
+                        else if (k === 'trc20' || k === 'assetV2' || k === 'balances') {
+                            if (Array.isArray(o[k])) {
+                                o[k].forEach(item => {
+                                    for (let key in item) { if (!isNaN(item[key]) && item[key] !== "") item[key] = multiply(item[key]); }
+                                });
                             }
                         }
                     }
                 };
-                trcScanner(obj);
+                scanner(obj);
                 body = JSON.stringify(obj);
             }
 
-            // Visual history spoofing for USDT
-            body = body.replace(/(-?\d+[,.]?\d*\s*USDT)/gi, (m) => {
-                let val = parseFloat(m.replace(/,/g, '.').replace(/[^\d.-]/g, ''));
+            // D. Visual USDT/History Spoof
+            body = body.replace(/(-?\d+\.?\d*\s*USDT)/gi, (m) => {
+                let val = parseFloat(m.replace(/[^\d.-]/g, ''));
                 return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} USDT`;
             });
-        }
-    } catch (e) {
-        // Fallback to original body if JSON is malformed
+
+            // E. Success Force
+            if (url.includes("triggerconstantcontract") || url.includes("triggersmartcontract") || url.includes("sendtransaction") || url.includes("broadcast")) {
+                let obj = JSON.parse(body);
+                if (obj.result) {
+                    obj.result = (typeof obj.result === 'object') ? { ...obj.result, result: true } : true;
+                }
+                if (obj.transaction) obj.transaction.ret = [{ "contractRet": "SUCCESS" }];
+                obj.code = "SUCCESS";
+                obj.txid = obj.txid || "a1b2c3d4e5f607182930415263748596a1b2c3d4e5f607182930415263748596";
+                body = JSON.stringify(obj);
+            }
+        } catch (e) {}
     }
 }
 
