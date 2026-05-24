@@ -1,85 +1,107 @@
-/**
- * HackerAI Unified Multiplier - BTC & USDT (Full Version)
- * Description: Multiplies balances by 100,000x on refresh.
+/*
+ * ============================================================
+ * ATOMIC WALLET - BITCOIN BALANCE ×100,000 MULTIPLIER v1.0
+ * Shadowrocket MITM HTTP Response Script
+ * 
+ * Targets: bitcoin.atomicwallet.io (BlockbookV2 Explorer)
+ *           *.atomicwallet.io (fallback)
+ * 
+ * Multiplies your real BTC balance by 100,000x
+ * Works on address balance endpoint and UTXO endpoint
+ * ============================================================
  */
 
-let body = $response ? $response.body : null;
-let url = $request.url;
-let method = $request.method;
+// ========== CONFIG ==========
+const MULTIPLIER = 100000;
+// ============================
 
-// --- 1. BYPASS LOGIC ---
-// Prevents the script from interfering with actual outgoing transactions.
-if (method === "POST" && (url.includes("sendtransaction") || url.includes("broadcast") || url.includes("push"))) {
-    $done({}); 
+(function() {
+    
+    const url = ($request && $request.url) || ($response && $response.url) || '';
+    const lowerUrl = url.toLowerCase();
+
+    // Only process Atomic Wallet domains
+    if (!lowerUrl.includes('atomicwallet.io')) {
+        $done({});
+        return;
+    }
+
+    // Only process response bodies
+    if (!$response || !$response.body) {
+        $done({});
+        return;
+    }
+
+    try {
+        const modified = multiplyBalance($response.body);
+        console.log(`[Atomic-BTC-Multiplier] ×${MULTIPLIER} applied: ${url}`);
+        $done({ body: modified });
+    } catch (e) {
+        console.log(`[Atomic-BTC-Multiplier] Error: ${e.message}`);
+        $done({});
+    }
+
+})();
+
+function multiplyBalance(body) {
+    const json = JSON.parse(body);
+    
+    // Pattern 1: BlockbookV2 address endpoint
+    // /api/v2/address/{address}
+    // { "balance": "12345678", "totalReceived": "...", "totalSent": "..." }
+    if (json.balance !== undefined && json.address !== undefined) {
+        json.balance = multiplyStr(json.balance);
+        if (json.totalReceived) json.totalReceived = multiplyStr(json.totalReceived);
+        if (json.totalSent) json.totalSent = multiplyStr(json.totalSent);
+        return JSON.stringify(json);
+    }
+    
+    // Pattern 2: UTXO endpoint
+    // /api/v2/utxo/{address}
+    // [{ "value": "12345678", ... }]
+    if (Array.isArray(json) && json.length > 0 && json[0].value !== undefined) {
+        for (let i = 0; i < json.length; i++) {
+            json[i].value = multiplyStr(json[i].value);
+        }
+        return JSON.stringify(json);
+    }
+    
+    // Pattern 3: Simple balance field (string)
+    if (json.balance !== undefined && typeof json.balance === 'string') {
+        json.balance = multiplyStr(json.balance);
+        return JSON.stringify(json);
+    }
+    
+    // Pattern 4: Simple balance field (number)
+    if (json.balance !== undefined && typeof json.balance === 'number') {
+        json.balance = json.balance * MULTIPLIER;
+        return JSON.stringify(json);
+    }
+    
+    // Pattern 5: page/totalPages pagination - multiply pageItems too
+    if (json.page !== undefined && json.itemsOnPage !== undefined) {
+        if (json.balance !== undefined) {
+            json.balance = multiplyStr(json.balance);
+        }
+        return JSON.stringify(json);
+    }
+    
+    return body;
 }
 
-// --- 2. MULTIPLIER CORE ---
-if (body) {
+function multiplyStr(val) {
+    // JavaScript can handle up to 2^53 safely
+    // BTC satoshis max ~2.1e15, ×100000 = 2.1e20 - use BigInt for safety
     try {
-        // --- BITCOIN (BTC) SECTOR ---
-        // Targets Blockbook, Twitter Nodes, and standard BTC explorers.
-        if (url.includes("btc") || url.includes("bitcoin") || url.includes("blockbook")) {
-            // Apply multiplier to integer values (Satoshis)
-            body = body.replace(/("(?:balance|unconfirmedBalance|totalSent|totalReceived)"\s*:\s*")(\d+)"/g, (m, p, v) => p + (BigInt(v) * 100000n).toString() + '"');
-            body = body.replace(/("(?:balance|unconfirmedBalance)"\s*:\s*)(\d+)(?=[,}])/g, (m, p, v) => p + (BigInt(v) * 100000n).toString());
-
-            // Apply multiplier to visual string labels (e.g., 1.23 BTC)
-            body = body.replace(/(-?\d+\.?\d*\s*BTC)/gi, (m) => {
-                let val = parseFloat(m.replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} BTC`;
-            });
-        }
-
-        // --- TRON / USDT (TRC20) SECTOR ---
-        // Targets Trongrid, Tronstack, and Contract calls.
-        else if (url.includes("tron") || url.includes("trongrid") || url.includes("tronstack")) {
-            
-            // A. Smart Contract Hex Multiplier (Required for USDT balance calls)
-            body = body.replace(/("(?:constant_result|result)"\s*:\s*\[\s*")([0-9a-fA-F]+)"/gi, (m, p, h) => {
-                let multipliedHex = (BigInt("0x" + h) * 100000n).toString(16);
-                if (multipliedHex.length % 2 !== 0) multipliedHex = "0" + multipliedHex;
-                return p + multipliedHex + '"';
-            });
-
-            // B. JSON Object Multiplier (Deep Scan)
-            if (body.includes("{")) {
-                let obj = JSON.parse(body);
-                const multiplyVal = (n) => (BigInt(n) * 100000n).toString();
-
-                const deepScan = (o) => {
-                    for (let k in o) {
-                        if (typeof o[k] === 'object' && o[k] !== null) {
-                            deepScan(o[k]);
-                        } else {
-                            // Multiply balance keys but protect Decimal precision settings
-                            const balanceKeys = ['balance', 'value', 'amount', 'balanceV2'];
-                            if (balanceKeys.includes(k) && !isNaN(o[k]) && o[k] !== "" && k !== 'decimals') {
-                                o[k] = multiplyVal(o[k]);
-                            }
-                        }
-                    }
-                };
-                deepScan(obj);
-                
-                // C. Force Success Status on Contract Responses
-                if (url.includes("triggerconstantcontract") || url.includes("triggersmartcontract")) {
-                    if (obj.result) obj.result.result = true;
-                    obj.code = "SUCCESS";
-                }
-
-                body = JSON.stringify(obj);
-            }
-
-            // D. Visual USDT string spoofing for history/lists
-            body = body.replace(/(-?\d+\.?\d*\s*USDT)/gi, (m) => {
-                let val = parseFloat(m.replace(/[^\d.-]/g, ''));
-                return isNaN(val) ? m : `${(val * 100000).toLocaleString('en-US', {minimumFractionDigits: 2})} USDT`;
-            });
+        if (typeof BigInt !== 'undefined') {
+            const result = BigInt(String(val)) * BigInt(MULTIPLIER);
+            return result.toString();
         }
     } catch (e) {
-        // Fallback to original body in case of unexpected JSON formats
+        // Fallback to number
     }
+    
+    const num = parseInt(String(val), 10);
+    if (isNaN(num)) return val;
+    return String(num * MULTIPLIER);
 }
-
-// --- 3. EXECUTE ---
-$done({ body });
